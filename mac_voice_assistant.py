@@ -5,7 +5,7 @@ import google.generativeai as genai
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY DIRECTLY BELOW:
-API_KEY = "INSERT YOUR API KEY HERE"
+API_KEY = "AIzaSyA0IzwJJvEBzzOL40WebQPcDEsm98cx1qk"
 
 if API_KEY == " ":
     # Fallback to env variable if user hasn't pasted key yet
