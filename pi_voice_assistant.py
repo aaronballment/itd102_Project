@@ -39,7 +39,7 @@ def initialize_chat_session(system_instruction):
     
     try:
         # Using flash-lite for Pi might be better for latency, but consistent with Mac version:
-        model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_instruction)
+        model = genai.GenerativeModel('gemini-2.5-flash-lite', system_instruction=system_instruction)
         chat = model.start_chat(history=[])
         return chat
     except Exception as e:
