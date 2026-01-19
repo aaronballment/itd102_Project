@@ -18,20 +18,16 @@ if API_KEY:
     genai.configure(api_key=API_KEY)
 
 # --- SYSTEM PROMPT ---
-SYSTEM_INSTRUCTION = """
-You are "The Wingman," the ultimate smooth operator accompanying your best friend on a first date. 
+# --- SYSTEM PROMPT ---
+def load_system_instruction(file_path="system_prompt.txt"):
+    try:
+        with open(file_path, "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"Error: {file_path} not found. Using default prompt.")
+        return "You are a helpful assistant."
 
-You are effortlessly charming, highly romantic, and very cheeky. You don't just give advice; you give confidence with a wink. Your goal is to make your friend feel like a Casanova.
-
-Constraints:
-1. STRICT LENGTH LIMIT: Maximum 3 sentences.
-2. Tone: Playful, flirty, and bold.
-3. Always prioritize romance and smooth moves.
-4. You are having a conversation. Ask follow-up questions to help the user get ready for their date. Every now and again, ask if the user is ready to go. 
-
-If the user suggests they are done, then give them a short and encouraging goodbye message before they go on their date.
-
-"""
+SYSTEM_INSTRUCTION = load_system_instruction()
 def initialize_chat_session(system_instruction):
     """
     Initializes a Gemini chat session with history.
@@ -42,7 +38,7 @@ def initialize_chat_session(system_instruction):
     
     try:
         # UPDATED MODEL TO 2.5-flash as requested
-        model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_instruction)
+        model = genai.GenerativeModel('gemini-2.5-flash-lite', system_instruction=system_instruction)
         chat = model.start_chat(history=[])
         return chat
     except Exception as e:
@@ -79,11 +75,24 @@ def listen_and_recognize(recognizer, source):
         return None
     except sr.UnknownValueError:
         print("Error: Could not understand audio.")
-        speak_text("I heard sound, but no words.")
+        speak_text("Sorry, I didn't verify that.")
         return None
     except Exception as e:
         print(f"Error: {e}")
         return None
+
+def get_valid_input(recognizer, source, prompt_text):
+    """
+    Speaks the prompt and loops until a valid input is received.
+    """
+    speak_text(prompt_text)
+    
+    while True:
+        user_input = listen_and_recognize(recognizer, source)
+        if user_input:
+            return user_input
+        
+        speak_text(prompt_text)
 
 def main():
     print("\n--- Running in macOS Mode (Gemini Enhanced) ---")
@@ -106,14 +115,11 @@ def main():
             print(f"DEBUG: Threshold set to: {recognizer.energy_threshold}")
             
             # --- New Questions ---
-            speak_text("What is your name?")
-            user_name = listen_and_recognize(recognizer, source)
+            user_name = get_valid_input(recognizer, source, "What is your name?")
 
-            speak_text("What are you looking for in a date?")
-            date_preference = listen_and_recognize(recognizer, source)
+            date_preference = get_valid_input(recognizer, source, "What are you looking for in a date?")
             
-            speak_text("What is your date's name?")
-            date_name = listen_and_recognize(recognizer, source)
+            date_name = get_valid_input(recognizer, source, "What is your date's name?")
             
             # --- Main Interaction ---
             # --- Main Interaction ---
@@ -135,23 +141,54 @@ def main():
                     continue # Try listening again if nothing was caught or error
                 
                 # Check for exit phrases
-                if user_input.lower() in ["exit", "quit", "goodbye", "bye", "stop"]:
-                    speak_text("Good luck on your date! Catch you later.")
+                normalized_input = user_input.lower().replace(",", "").replace(".", "").replace("!", "")
+                if normalized_input == "goodbye":
+                    try:
+                        if chat_session:
+                            final_input = f"{context_instruction}\n\nThe user is leaving now. Give them one last energetic, confidence-boosting hype-up message before their date. Keep it short (max 2 sentences)."
+                            final_response = chat_session.send_message(final_input)
+                            speak_text(final_response.text)
+                        else:
+                            speak_text("You're a legend! Go get 'em!")
+                    except Exception as e:
+                        print(f"Error generating goodbye: {e}")
+                        speak_text("Good luck! You're going to be great.")
                     break
                 
                 print("Thinking (querying Gemini)...")
                 try:
                     if chat_session:
-                        response = chat_session.send_message(user_input)
-                        response_text = response.text
+                        # Stream the response
+                        response_stream = chat_session.send_message(user_input, stream=True)
+                        
+                        buffer = ""
+                        for chunk in response_stream:
+                            text_chunk = chunk.text
+                            buffer += text_chunk
+                            
+                            # Check for sentence endings to speak incrementally
+                            if any(punct in buffer for punct in [".", "!", "?", ":", "\n"]):
+                                import re
+                                parts = re.split(r'([.!?:\n]+)', buffer)
+                                
+                                for i in range(0, len(parts) - 1, 2):
+                                    sentence = parts[i] + parts[i+1]
+                                    clean_sentence = sentence.strip()
+                                    if clean_sentence:
+                                        print(f"Gemini Streaming: {clean_sentence}")
+                                        speak_text(clean_sentence)
+                                
+                                buffer = parts[-1]
+                        
+                        if buffer.strip():
+                            print(f"Gemini Streaming (Final): {buffer.strip()}")
+                            speak_text(buffer.strip())
+                            
                     else:
-                        response_text = "I'm not connected to my brain."
+                        speak_text("I'm not connected to my brain.")
                 except Exception as e:
                      print(f"Gemini Error: {e}")
-                     response_text = "I'm having a bit of trouble thinking right now."
-                
-                #print(f"Gemini says: {response_text}")
-                speak_text(response_text)
+                     speak_text("I'm having a bit of trouble thinking right now.")
 
     except Exception as e:
         print(f"Error: {e}")
